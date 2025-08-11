@@ -5,7 +5,27 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
-app.use(cors());
+// Allow both local dev and production frontend
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://your-frontend-domain.com' // change to your real deployed frontend URL
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true
+}));
+
+// Explicitly handle preflight OPTIONS for all routes
+app.options('*', cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
