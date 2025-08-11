@@ -13,29 +13,43 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true
 }));
 
-// Explicitly handle preflight OPTIONS for all routes
-app.options('*', cors());
+// NOTE: remove or replace this line — it causes path-to-regexp errors on Express v5
+// app.options('*', cors()); // <--- removed
+
+// If you really want an explicit OPTIONS preflight route on Express 5+, use a named wildcard:
+// app.options('/*splat', cors());
+
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Load your existing Netlify function modules
-// (assumes you keep the `functions/` directory as in the zip)
+console.log('Loading submit.js');
 const submitFn = require('./functions/submit.js').handler;
+
+console.log('Loading getSheets.js');
 const getSheetsFn = require('./functions/getSheets.js').handler;
+
+console.log('Loading getSheetData.js');
 const getSheetDataFn = require('./functions/getSheetData.js').handler;
+
+console.log('Loading updateSheetRow.js');
 const updateSheetRowFn = require('./functions/updateSheetRow.js').handler;
+
+console.log('Loading deleteSheetRow.js');
 const deleteSheetRowFn = require('./functions/deleteSheetRow.js').handler;
+
+console.log('Loading logFormChange.js');
 const logFormChangeFn = require('./functions/logFormChange.js').handler;
 
 // Helper: build a Netlify-style `event` object from Express req
@@ -48,7 +62,6 @@ function makeEvent(req) {
   };
 
   if (req.body && Object.keys(req.body).length > 0) {
-    // Netlify functions expect event.body to be a string for JSON bodies
     try {
       event.body = JSON.stringify(req.body);
     } catch (e) {
@@ -72,17 +85,14 @@ async function runHandler(handler, req, res) {
     const status = result.statusCode || 200;
     const headers = result.headers || {};
 
-    // set headers
     Object.entries(headers).forEach(([k, v]) => {
       try { res.setHeader(k, v); } catch (e) {}
     });
 
-    // send body (try to parse JSON if possible)
     if (result.body === undefined || result.body === null || result.body === '') {
       return res.status(status).end();
     }
 
-    // Many of your Netlify functions return JSON.stringify(...) as body
     if (typeof result.body === 'string') {
       try {
         const parsed = JSON.parse(result.body);
@@ -92,7 +102,6 @@ async function runHandler(handler, req, res) {
       }
     }
 
-    // body is already an object
     return res.status(status).json(result.body);
   } catch (err) {
     console.error('Error running handler:', err);
@@ -100,7 +109,6 @@ async function runHandler(handler, req, res) {
   }
 }
 
-// Route mapping (match the function names)
 app.get('/', (req, res) => res.json({ ok: true, message: 'Express wrapper for Netlify functions' }));
 
 app.get('/getSheets', async (req, res) => runHandler(getSheetsFn, req, res));
@@ -110,7 +118,6 @@ app.post('/updateSheetRow', async (req, res) => runHandler(updateSheetRowFn, req
 app.post('/deleteSheetRow', async (req, res) => runHandler(deleteSheetRowFn, req, res));
 app.post('/logFormChange', async (req, res) => runHandler(logFormChangeFn, req, res));
 
-// Health check
 app.get('/_health', (req, res) => res.send('ok'));
 
 const PORT = process.env.PORT || 8888;
