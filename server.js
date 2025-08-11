@@ -5,9 +5,39 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
-app.use(cors());
+// CORS: allow only trusted origins (add your production frontend URL)
+const allowedOrigins = [
+  'http://localhost:3000',                 // dev
+  'https://your-frontend-domain.com'       // <-- REPLACE with your actual frontend domain
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps, curl) and our allowed origins
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true,
+}));
+
+// Ensure OPTIONS preflight requests are handled for all routes
+app.options('*', cors());
+
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Optional: convert CORS errors into a friendly 403 response
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'CORS Error: Origin not allowed' });
+  }
+  next(err);
+});
 
 // Load your existing Netlify function modules
 // (assumes you keep the `functions/` directory as in the zip)
