@@ -1,7 +1,6 @@
 // server.js
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 
 const app = express();
@@ -11,24 +10,41 @@ const allowedOrigins = [
   'https://your-frontend-domain.com' // change to your real deployed frontend URL
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps, curl, Postman)
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    callback(new Error('Not allowed by CORS'));
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  credentials: true
-}));
+/**
+ * CORS middleware:
+ * - echoes allowed origin
+ * - sets Access-Control-Allow-* headers
+ * - short-circuits OPTIONS preflights with 204
+ *
+ * This is robust across Express versions and avoids path-to-regexp issues.
+ */
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-// NOTE: remove or replace this line — it causes path-to-regexp errors on Express v5
-// app.options('*', cors()); // <--- removed
+  if (origin && allowedOrigins.includes(origin)) {
+    // Echo the requesting origin (more secure than '*')
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    // Tell caches that the response varies based on Origin header
+    res.setHeader('Vary', 'Origin');
+  } else {
+    // Optional: allow non-browser tools (curl/postman) by not setting origin header
+    // res.setHeader('Access-Control-Allow-Origin', '*');
+  }
 
-// If you really want an explicit OPTIONS preflight route on Express 5+, use a named wildcard:
-// app.options('/*splat', cors());
+  // Allow common methods and requested headers
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    req.header('Access-Control-Request-Headers') || 'Content-Type,Authorization,Accept'
+  );
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Respond to preflight requests immediately
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -85,6 +101,7 @@ async function runHandler(handler, req, res) {
     const status = result.statusCode || 200;
     const headers = result.headers || {};
 
+    // copy headers from function result (these will overwrite any earlier headers)
     Object.entries(headers).forEach(([k, v]) => {
       try { res.setHeader(k, v); } catch (e) {}
     });
